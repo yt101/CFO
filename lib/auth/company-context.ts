@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server"
+import { isDemoMode } from '@/lib/utils/demo-mode'
 
 export interface CompanyUser {
   id: string
@@ -27,17 +28,12 @@ export interface CompanySettings {
  * Get the current user's company context including role and permissions
  */
 export async function getCurrentUserCompanyContext(): Promise<CompanyUser | null> {
-  const supabase = await createClient()
-  
-  // Check if we're in demo mode - also check for localhost and force demo mode
-  const isDemoMode = process.env.NEXT_PUBLIC_SUPABASE_URL === 'https://placeholder.supabase.co' || 
-                    process.env.NEXT_PUBLIC_SUPABASE_URL === 'your_supabase_url_here' ||
-                    process.env.NEXT_PUBLIC_FORCE_DEMO_MODE === 'true' ||
-                    process.env.NODE_ENV === 'development' // Always demo mode in development
+  // Check if we're in demo mode using centralized function
+  const demoMode = isDemoMode()
 
-  console.log('getCurrentUserCompanyContext - isDemoMode:', isDemoMode, 'FORCE_DEMO_MODE:', process.env.NEXT_PUBLIC_FORCE_DEMO_MODE, 'NODE_ENV:', process.env.NODE_ENV)
+  console.log('getCurrentUserCompanyContext - demoMode:', demoMode, 'FORCE_DEMO_MODE:', process.env.NEXT_PUBLIC_FORCE_DEMO_MODE, 'NODE_ENV:', process.env.NODE_ENV)
 
-  if (isDemoMode) {
+  if (demoMode) {
     console.log('Returning demo user context')
     // Return demo user context with super user permissions
     return {
@@ -67,10 +63,55 @@ export async function getCurrentUserCompanyContext(): Promise<CompanyUser | null
     }
   }
 
+  const supabase = await createClient()
+
   try {
     const { data: { user }, error: userError } = await supabase.auth.getUser()
     
     if (userError || !user) {
+      // If no Supabase user, check for demo cookie as fallback
+      // This allows demo mode to work even when Supabase is configured
+      if (typeof window === 'undefined') {
+        // Server-side: check cookies via headers
+        const { cookies } = await import('next/headers')
+        const cookieStore = await cookies()
+        const demoUserCookie = cookieStore.get('demo_user')
+        
+        if (demoUserCookie) {
+          try {
+            const userData = JSON.parse(demoUserCookie.value)
+            console.log('Found demo user cookie, returning demo context')
+            return {
+              id: userData.id || 'demo-admin-id',
+              email: userData.email || 'admin@demo.com',
+              role: (userData.role || 'admin') as 'admin' | 'user' | 'viewer',
+              company_id: userData.company_id || '550e8400-e29b-41d4-a716-446655440001',
+              company_name: 'Acme Corporation',
+              permissions: { 
+                all_modules: true,
+                can_manage_users: true,
+                can_edit_settings: true,
+                can_configure_integrations: true,
+                can_manage_company_settings: true,
+                can_access_all_configurations: true,
+                can_modify_permissions: true,
+                can_access_admin_panel: true,
+                can_manage_billing: true,
+                can_export_data: true,
+                can_import_data: true,
+                can_manage_api_keys: true,
+                can_configure_webhooks: true,
+                can_manage_roles: true,
+                can_audit_logs: true,
+                super_user: true
+              }
+            }
+          } catch (e) {
+            console.error('Error parsing demo user cookie:', e)
+          }
+        }
+      }
+      
       return null
     }
 
@@ -112,17 +153,12 @@ export async function getCurrentUserCompanyContext(): Promise<CompanyUser | null
  * Get company settings and module access
  */
 export async function getCompanySettings(companyId: string): Promise<CompanySettings | null> {
-  const supabase = await createClient()
-  
-  // Check if we're in demo mode - same logic as getCurrentUserCompanyContext
-  const isDemoMode = process.env.NEXT_PUBLIC_SUPABASE_URL === 'https://placeholder.supabase.co' || 
-                    process.env.NEXT_PUBLIC_SUPABASE_URL === 'your_supabase_url_here' ||
-                    process.env.NEXT_PUBLIC_FORCE_DEMO_MODE === 'true' ||
-                    process.env.NODE_ENV === 'development' // Always demo mode in development
+  // Check if we're in demo mode using centralized function
+  const demoMode = isDemoMode()
 
-  console.log('getCompanySettings - isDemoMode:', isDemoMode, 'FORCE_DEMO_MODE:', process.env.NEXT_PUBLIC_FORCE_DEMO_MODE, 'NODE_ENV:', process.env.NODE_ENV)
+  console.log('getCompanySettings - demoMode:', demoMode, 'FORCE_DEMO_MODE:', process.env.NEXT_PUBLIC_FORCE_DEMO_MODE, 'NODE_ENV:', process.env.NODE_ENV)
 
-  if (isDemoMode) {
+  if (demoMode) {
     console.log('Returning demo company settings')
     // Return demo company settings with all modules enabled for admin
     return {
@@ -150,8 +186,69 @@ export async function getCompanySettings(companyId: string): Promise<CompanySett
       .select('module_name, enabled, settings')
       .eq('company_id', companyId)
 
-    if (error || !settings) {
+    // If no settings found in Supabase, check for demo cookie as fallback
+    if (error || !settings || settings.length === 0) {
+      // Check for demo cookie as fallback
+      const { cookies } = await import('next/headers')
+      const cookieStore = await cookies()
+      const demoUserCookie = cookieStore.get('demo_user')
+      
+      if (demoUserCookie) {
+        console.log('No Supabase settings found, but demo cookie exists - returning demo settings with all modules enabled')
+        return {
+          company_id: companyId,
+          modules: {
+            cash_flow: true,
+            finance: true,
+            human_resource: true,
+            tax_optimization: true,
+            supply_chain: true,
+            analytics: true,
+            industry_specific: true
+          },
+          settings: {
+            allow_all_configurations: true,
+            super_user_mode: true,
+            unrestricted_access: true
+          }
+        }
+      }
+      
       return null
+    }
+
+    // Check for demo cookie - if present, override with demo settings (all modules enabled for admin)
+    const { cookies } = await import('next/headers')
+    const cookieStore = await cookies()
+    const demoUserCookie = cookieStore.get('demo_user')
+    
+    if (demoUserCookie) {
+      try {
+        const userData = JSON.parse(demoUserCookie.value)
+        // If admin user with demo cookie, enable all modules
+        if (userData.email === 'admin@demo.com' || userData.role === 'admin') {
+          console.log('Admin with demo cookie detected - overriding with all modules enabled')
+          return {
+            company_id: companyId,
+            modules: {
+              cash_flow: true,
+              finance: true,
+              human_resource: true,
+              tax_optimization: true,
+              supply_chain: true,
+              analytics: true,
+              industry_specific: true
+            },
+            settings: {
+              allow_all_configurations: true,
+              super_user_mode: true,
+              unrestricted_access: true
+            }
+          }
+        }
+      } catch (e) {
+        console.error('Error parsing demo user cookie:', e)
+      }
     }
 
     // Transform settings into modules object
@@ -181,6 +278,33 @@ export async function getCompanySettings(companyId: string): Promise<CompanySett
     }
   } catch (error) {
     console.error('Error getting company settings:', error)
+    
+    // On error, check for demo cookie as fallback
+    const { cookies } = await import('next/headers')
+    const cookieStore = await cookies()
+    const demoUserCookie = cookieStore.get('demo_user')
+    
+    if (demoUserCookie) {
+      console.log('Error fetching settings, but demo cookie exists - returning demo settings with all modules enabled')
+      return {
+        company_id: companyId,
+        modules: {
+          cash_flow: true,
+          finance: true,
+          human_resource: true,
+          tax_optimization: true,
+          supply_chain: true,
+          analytics: true,
+          industry_specific: true
+        },
+        settings: {
+          allow_all_configurations: true,
+          super_user_mode: true,
+          unrestricted_access: true
+        }
+      }
+    }
+    
     return null
   }
 }

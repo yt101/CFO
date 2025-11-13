@@ -13,14 +13,20 @@ export async function middleware(request: NextRequest) {
     supabaseAnonKey !== 'your_supabase_anon_key_here' &&
     supabaseAnonKey !== 'placeholder_key'
 
-  // Demo mode - completely bypass Supabase
-  // Check for force demo mode environment variable, demo user cookie, or missing Supabase config
+  // Demo mode logic:
+  // 1. If FORCE_DEMO_MODE is explicitly set to 'true', use demo mode
+  // 2. If Supabase is NOT configured, use demo mode
+  // 3. If Supabase IS configured and FORCE_DEMO_MODE is not 'true', use Supabase (production mode)
+  // 4. Demo user cookie can still be used for quick testing even with Supabase configured
   const forceDemoMode = process.env.NEXT_PUBLIC_FORCE_DEMO_MODE === 'true'
   const demoUser = request.cookies.get('demo_user')
   const hasDemoUserCookie = !!demoUser
-  const isLocalhost = request.nextUrl.hostname === 'localhost' || request.nextUrl.hostname === '127.0.0.1'
-
-  const isDemoMode = forceDemoMode || hasDemoUserCookie || !supabaseConfigured || (isLocalhost && !supabaseConfigured)
+  
+  // Use demo mode if:
+  // - Force demo mode is explicitly enabled, OR
+  // - Supabase is not configured, OR
+  // - User has demo cookie (for quick testing)
+  const isDemoMode = forceDemoMode || !supabaseConfigured || hasDemoUserCookie
 
   if (isDemoMode && request.nextUrl.pathname === '/auth/login') {
     const url = request.nextUrl.clone()
@@ -33,7 +39,8 @@ export async function middleware(request: NextRequest) {
     console.log('Demo mode active:', { 
       pathname: request.nextUrl.pathname, 
       hasDemoUser: !!demoUser, 
-      isLocalhost,
+      forceDemoMode,
+      supabaseConfigured,
       demoUserValue: demoUser?.value 
     })
     
@@ -99,7 +106,7 @@ export async function middleware(request: NextRequest) {
     })
   }
 
-  // Production mode - use Supabase
+  // Production mode - use Supabase, but allow demo cookie as fallback
   let supabaseResponse = NextResponse.next({
     request,
   })
@@ -128,14 +135,31 @@ export async function middleware(request: NextRequest) {
       data: { user },
     } = await supabase.auth.getUser()
 
-    if (!user && !request.nextUrl.pathname.startsWith("/auth") && request.nextUrl.pathname !== "/") {
-      const url = request.nextUrl.clone()
-      url.pathname = "/auth/login"
-      return NextResponse.redirect(url)
+    // If no Supabase user, check for demo cookie as fallback
+    if (!user) {
+      // Check for demo cookie - allows demo mode even when Supabase is configured
+      if (demoUser && request.nextUrl.pathname.startsWith("/dashboard")) {
+        console.log('No Supabase user, but demo cookie found - allowing access')
+        // Allow access with demo cookie
+        return supabaseResponse
+      }
+      
+      // No user and no demo cookie - redirect to login
+      if (!request.nextUrl.pathname.startsWith("/auth") && request.nextUrl.pathname !== "/") {
+        const url = request.nextUrl.clone()
+        url.pathname = "/auth/login"
+        return NextResponse.redirect(url)
+      }
     }
 
     return supabaseResponse
   } catch (error) {
+    // If there's an error with Supabase, check for demo cookie as fallback
+    if (demoUser && request.nextUrl.pathname.startsWith("/dashboard")) {
+      console.log('Supabase error, but demo cookie found - allowing access')
+      return supabaseResponse
+    }
+    
     // If there's an error with Supabase, allow access to auth pages
     if (!request.nextUrl.pathname.startsWith("/auth") && request.nextUrl.pathname !== "/") {
       const url = request.nextUrl.clone()
