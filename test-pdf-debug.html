@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PDF Extraction Debug Tool</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .test-section {
+            margin: 20px 0;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+        }
+        .success {
+            background-color: #d4edda;
+            border-color: #c3e6cb;
+        }
+        .error {
+            background-color: #f8d7da;
+            border-color: #f5c6cb;
+        }
+        .info {
+            background-color: #d1ecf1;
+            border-color: #bee5eb;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        .file-input {
+            margin: 10px 0;
+        }
+        .result {
+            margin: 10px 0;
+            padding: 10px;
+            border-radius: 4px;
+            white-space: pre-wrap;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        .debug-info {
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+    <h1>PDF Extraction Debug Tool</h1>
+    
+    <div class="test-section info">
+        <h2>Server Status</h2>
+        <p>✅ Server is running on <strong>http://localhost:3000</strong></p>
+        <p>✅ Personal Tax Planning available at <strong>http://localhost:3000/dashboard/tax-optimization?tab=personal</strong></p>
+    </div>
+
+    <div class="test-section">
+        <h2>PDF Upload Test</h2>
+        <p>Upload a 1040 PDF to test the extraction:</p>
+        <div class="file-input">
+            <input type="file" id="pdfFile" accept=".pdf" />
+            <button onclick="testPDFUpload()">Test PDF Extraction</button>
+        </div>
+        <div id="uploadResult" class="result" style="display: none;"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>Manual Data Entry Test</h2>
+        <p>Test the manual data entry functionality:</p>
+        <div>
+            <input type="text" id="manualInput" placeholder="Income: $75,000, Tax owed: $8,500, Filing status: Single" style="width: 100%; padding: 8px; margin: 5px 0;" />
+            <button onclick="testManualEntry()">Test Manual Entry</button>
+        </div>
+        <div id="manualResult" class="result" style="display: none;"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>Debug Information</h2>
+        <div class="debug-info">
+            <h3>What to look for in the console:</h3>
+            <ul>
+                <li><strong>PDF Text Length:</strong> Should be > 1000 characters for good extraction</li>
+                <li><strong>All Numbers Found:</strong> Look for income amounts (20k-500k range)</li>
+                <li><strong>Income Candidates:</strong> Should show reasonable income amounts</li>
+                <li><strong>Tax Candidates:</strong> Should show reasonable tax amounts</li>
+                <li><strong>Line Matches:</strong> Look for "Line 1", "Line 11", "Line 37" matches</li>
+            </ul>
+        </div>
+    </div>
+
+    <script>
+        async function testPDFUpload() {
+            const fileInput = document.getElementById('pdfFile');
+            const resultDiv = document.getElementById('uploadResult');
+            
+            if (!fileInput.files[0]) {
+                resultDiv.style.display = 'block';
+                resultDiv.className = 'result error';
+                resultDiv.textContent = 'Please select a PDF file first.';
+                return;
+            }
+
+            resultDiv.style.display = 'block';
+            resultDiv.className = 'result info';
+            resultDiv.textContent = 'Uploading and processing PDF...';
+
+            try {
+                const formData = new FormData();
+                formData.append('file', fileInput.files[0]);
+
+                const response = await fetch('/api/test-pdf', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const result = await response.json();
+                
+                if (result.ok) {
+                    resultDiv.className = 'result success';
+                    resultDiv.textContent = `✅ PDF Processing Complete!\n\n` +
+                        `File: ${result.fileInfo.name}\n` +
+                        `Size: ${result.fileInfo.size} bytes\n` +
+                        `Type: ${result.fileInfo.type}\n\n` +
+                        `Extraction Success: ${result.debug.extractionSuccess}\n` +
+                        `Has Income: ${result.debug.hasIncome}\n` +
+                        `Has Tax: ${result.debug.hasTax}\n\n` +
+                        `Extracted Data:\n${JSON.stringify(result.extractedData, null, 2)}`;
+                } else {
+                    resultDiv.className = 'result error';
+                    resultDiv.textContent = `❌ Error: ${result.error}\nDetails: ${result.details}`;
+                }
+            } catch (error) {
+                resultDiv.className = 'result error';
+                resultDiv.textContent = `❌ Network Error: ${error.message}`;
+            }
+        }
+
+        async function testManualEntry() {
+            const input = document.getElementById('manualInput').value;
+            const resultDiv = document.getElementById('manualResult');
+            
+            if (!input.trim()) {
+                resultDiv.style.display = 'block';
+                resultDiv.className = 'result error';
+                resultDiv.textContent = 'Please enter some data to test.';
+                return;
+            }
+
+            resultDiv.style.display = 'block';
+            resultDiv.className = 'result info';
+            resultDiv.textContent = 'Testing manual entry parsing...';
+
+            // Simulate the parsing logic
+            const incomeMatch = input.match(/income[:\s]*\$?([\d,]+)/i);
+            const taxMatch = input.match(/tax[:\s]*\$?([\d,]+)/i);
+            const statusMatch = input.match(/filing[:\s]*(single|married|head of household)/i);
+            
+            const income = incomeMatch ? parseInt(incomeMatch[1].replace(/,/g, '')) : 0;
+            const tax = taxMatch ? parseInt(taxMatch[1].replace(/,/g, '')) : 0;
+            const status = statusMatch ? statusMatch[1] : "Single";
+
+            resultDiv.className = 'result success';
+            resultDiv.textContent = `✅ Manual Entry Parsing Complete!\n\n` +
+                `Input: "${input}"\n\n` +
+                `Parsed Results:\n` +
+                `- Income: $${income.toLocaleString()}\n` +
+                `- Tax Owed: $${tax.toLocaleString()}\n` +
+                `- Filing Status: ${status}\n\n` +
+                `Income Match: ${incomeMatch ? incomeMatch[1] : 'None'}\n` +
+                `Tax Match: ${taxMatch ? taxMatch[1] : 'None'}\n` +
+                `Status Match: ${statusMatch ? statusMatch[1] : 'None'}`;
+        }
+
+        // Check server status on load
+        fetch('http://localhost:3000')
+            .then(response => {
+                if (response.ok) {
+                    console.log('✅ Server is accessible');
+                } else {
+                    console.log('❌ Server returned error:', response.status);
+                }
+            })
+            .catch(error => {
+                console.log('❌ Server not accessible:', error);
+            });
+    </script>
+</body>
+</html>
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,1027 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "AI CFO Chatbot API",
+    "version": "v1.0.0",
+    "description": "Backend endpoints for FP&A, Cashflow, Reporting, Controls, Risk, and Chatbot tool-calls."
+  },
+  "servers": [
+    {
+      "url": "https://api.cfo.ai/v1"
+    }
+  ],
+  "tags": [
+    {
+      "name": "Auth"
+    },
+    {
+      "name": "Connectors"
+    },
+    {
+      "name": "FP&A"
+    },
+    {
+      "name": "Cash"
+    },
+    {
+      "name": "Reporting"
+    },
+    {
+      "name": "Controls"
+    },
+    {
+      "name": "Risk"
+    },
+    {
+      "name": "Audit"
+    },
+    {
+      "name": "Chatbot"
+    }
+  ],
+  "paths": {
+    "/auth/token": {
+      "post": {
+        "tags": [
+          "Auth"
+        ],
+        "summary": "Obtain JWT using OAuth2 code",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "code": {
+                    "type": "string"
+                  },
+                  "redirect_uri": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "code",
+                  "redirect_uri"
+                ]
+              },
+              "examples": {
+                "default": {
+                  "value": {
+                    "code": "oauth_code",
+                    "redirect_uri": "https://app.cfo.ai/callback"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthToken"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid code"
+          }
+        }
+      }
+    },
+    "/connectors": {
+      "get": {
+        "tags": [
+          "Connectors"
+        ],
+        "summary": "List available data connectors",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Connector"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/connectors/{connectorId}/link": {
+      "post": {
+        "tags": [
+          "Connectors"
+        ],
+        "summary": "Start account linking (e.g., QuickBooks, Xero, Oracle Cloud, Plaid)",
+        "parameters": [
+          {
+            "name": "connectorId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LinkSession"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/ingest/sync": {
+      "post": {
+        "tags": [
+          "Connectors"
+        ],
+        "summary": "Trigger a data sync",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SyncRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Sync started",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SyncJob"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/fpna/scenario": {
+      "post": {
+        "tags": [
+          "FP&A"
+        ],
+        "summary": "Create or update a scenario with driver overrides",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScenarioRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Scenario saved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScenarioResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/fpna/forecast": {
+      "get": {
+        "tags": [
+          "FP&A"
+        ],
+        "summary": "Get monthly forecast for a scenario",
+        "parameters": [
+          {
+            "name": "scenario_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Forecast"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/fpna/variance": {
+      "get": {
+        "tags": [
+          "FP&A"
+        ],
+        "summary": "Variance analysis by period and dimension",
+        "parameters": [
+          {
+            "name": "period",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "2025-09"
+            }
+          },
+          {
+            "name": "dimension",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "account",
+                "dept",
+                "vendor",
+                "customer"
+              ],
+              "default": "account"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Variance"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/cash/runway": {
+      "get": {
+        "tags": [
+          "Cash"
+        ],
+        "summary": "Compute cash runway in weeks for a scenario",
+        "parameters": [
+          {
+            "name": "scenario_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Runway"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/cash/optimize": {
+      "post": {
+        "tags": [
+          "Cash"
+        ],
+        "summary": "Suggest working-capital optimizations",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CashOptimizeRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CashOptimizeResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/report/mtd": {
+      "get": {
+        "tags": [
+          "Reporting"
+        ],
+        "summary": "Month-to-date financial summary",
+        "parameters": [
+          {
+            "name": "period",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportMTD"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/report/board-pack": {
+      "post": {
+        "tags": [
+          "Reporting"
+        ],
+        "summary": "Generate board pack and return URL to PPTX",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BoardPackRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BoardPackResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/controls/check": {
+      "post": {
+        "tags": [
+          "Controls"
+        ],
+        "summary": "Run a control rule (e.g., GAAP flux check)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ControlCheckRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ControlCheckResult"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/risk": {
+      "get": {
+        "tags": [
+          "Risk"
+        ],
+        "summary": "List risk items",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/RiskItem"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Risk"
+        ],
+        "summary": "Create a risk item",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RiskItem"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created"
+          }
+        }
+      }
+    },
+    "/audit/export": {
+      "post": {
+        "tags": [
+          "Audit"
+        ],
+        "summary": "Export audit bundle for a period",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AuditExportRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuditExportResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/chat/answer": {
+      "post": {
+        "tags": [
+          "Chatbot"
+        ],
+        "summary": "Ask the CFO chatbot a question; tool-calls may be invoked server-side",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChatRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AuthToken": {
+        "type": "object",
+        "properties": {
+          "access_token": {
+            "type": "string"
+          },
+          "token_type": {
+            "type": "string",
+            "example": "Bearer"
+          },
+          "expires_in": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "access_token",
+          "token_type",
+          "expires_in"
+        ]
+      },
+      "Connector": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "available",
+              "linked"
+            ]
+          }
+        }
+      },
+      "LinkSession": {
+        "type": "object",
+        "properties": {
+          "session_id": {
+            "type": "string"
+          },
+          "link_url": {
+            "type": "string"
+          }
+        }
+      },
+      "SyncRequest": {
+        "type": "object",
+        "properties": {
+          "entities": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "example": [
+              "gl",
+              "ar",
+              "ap",
+              "banks",
+              "payroll"
+            ]
+          }
+        },
+        "required": [
+          "entities"
+        ]
+      },
+      "SyncJob": {
+        "type": "object",
+        "properties": {
+          "job_id": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "running",
+              "done",
+              "failed"
+            ]
+          }
+        }
+      },
+      "ScenarioRequest": {
+        "type": "object",
+        "properties": {
+          "base": {
+            "type": "string",
+            "description": "Base scenario id or 'latest_actuals'"
+          },
+          "overrides": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DriverOverride"
+            }
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "base",
+          "overrides"
+        ]
+      },
+      "DriverOverride": {
+        "type": "object",
+        "properties": {
+          "driver": {
+            "type": "string"
+          },
+          "op": {
+            "type": "string",
+            "enum": [
+              "set",
+              "inc",
+              "dec",
+              "mul"
+            ]
+          },
+          "value": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "driver",
+          "op",
+          "value"
+        ]
+      },
+      "ScenarioResponse": {
+        "type": "object",
+        "properties": {
+          "scenario_id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "scenario_id"
+        ]
+      },
+      "Forecast": {
+        "type": "object",
+        "properties": {
+          "scenario_id": {
+            "type": "string"
+          },
+          "currency": {
+            "type": "string"
+          },
+          "months": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "period": {
+                  "type": "string"
+                },
+                "revenue": {
+                  "type": "number"
+                },
+                "cogs": {
+                  "type": "number"
+                },
+                "opex": {
+                  "type": "number"
+                },
+                "ebitda": {
+                  "type": "number"
+                },
+                "cash_end": {
+                  "type": "number"
+                }
+              }
+            }
+          }
+        }
+      },
+      "Variance": {
+        "type": "object",
+        "properties": {
+          "period": {
+            "type": "string"
+          },
+          "dimension": {
+            "type": "string"
+          },
+          "bridge": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "label": {
+                  "type": "string"
+                },
+                "amount": {
+                  "type": "number"
+                },
+                "driver": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "narrative": {
+            "type": "string"
+          }
+        }
+      },
+      "Runway": {
+        "type": "object",
+        "properties": {
+          "weeks": {
+            "type": "integer"
+          },
+          "assumptions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "chart_url": {
+            "type": "string"
+          }
+        }
+      },
+      "CashOptimizeRequest": {
+        "type": "object",
+        "properties": {
+          "constraints": {
+            "type": "object",
+            "properties": {
+              "min_cash": {
+                "type": "number"
+              },
+              "must_pay": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "tactics": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "example": [
+              "stretch_ap",
+              "accelerate_ar",
+              "inventory_reduce"
+            ]
+          }
+        }
+      },
+      "CashOptimizeResponse": {
+        "type": "object",
+        "properties": {
+          "recommendations": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string"
+                },
+                "expected_impact": {
+                  "type": "number"
+                },
+                "notes": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      },
+      "ReportMTD": {
+        "type": "object",
+        "properties": {
+          "period": {
+            "type": "string"
+          },
+          "pnl": {
+            "type": "object"
+          },
+          "bs": {
+            "type": "object"
+          },
+          "cfs": {
+            "type": "object"
+          }
+        }
+      },
+      "BoardPackRequest": {
+        "type": "object",
+        "properties": {
+          "quarter": {
+            "type": "string",
+            "example": "2025-Q3"
+          },
+          "include_risks": {
+            "type": "boolean",
+            "default": true
+          }
+        },
+        "required": [
+          "quarter"
+        ]
+      },
+      "BoardPackResponse": {
+        "type": "object",
+        "properties": {
+          "pptx_url": {
+            "type": "string"
+          },
+          "summary": {
+            "type": "string"
+          }
+        }
+      },
+      "ControlCheckRequest": {
+        "type": "object",
+        "properties": {
+          "rule_id": {
+            "type": "string"
+          },
+          "period": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "rule_id"
+        ]
+      },
+      "ControlCheckResult": {
+        "type": "object",
+        "properties": {
+          "rule_id": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "ok",
+              "warn",
+              "fail"
+            ]
+          },
+          "evidence_links": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "RiskItem": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "area": {
+            "type": "string"
+          },
+          "likelihood": {
+            "type": "integer"
+          },
+          "impact": {
+            "type": "integer"
+          },
+          "owner": {
+            "type": "string"
+          },
+          "mitigation_status": {
+            "type": "string",
+            "enum": [
+              "open",
+              "in_progress",
+              "closed"
+            ]
+          }
+        }
+      },
+      "AuditExportRequest": {
+        "type": "object",
+        "properties": {
+          "period": {
+            "type": "string"
+          },
+          "scope": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "example": [
+              "gl",
+              "bank",
+              "ap",
+              "ar",
+              "controls"
+            ]
+          }
+        },
+        "required": [
+          "period"
+        ]
+      },
+      "AuditExportResponse": {
+        "type": "object",
+        "properties": {
+          "zip_url": {
+            "type": "string"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "ChatRequest": {
+        "type": "object",
+        "properties": {
+          "question": {
+            "type": "string"
+          },
+          "context": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "question"
+        ]
+      },
+      "ChatResponse": {
+        "type": "object",
+        "properties": {
+          "answer": {
+            "type": "string"
+          },
+          "provenance": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "tool_calls": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
+      }
+    }
+  },
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ]
+}

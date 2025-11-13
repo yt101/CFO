@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Upload Functionality</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .test-section {
+            margin: 20px 0;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+        }
+        .success {
+            background-color: #d4edda;
+            border-color: #c3e6cb;
+        }
+        .error {
+            background-color: #f8d7da;
+            border-color: #f5c6cb;
+        }
+        .info {
+            background-color: #d1ecf1;
+            border-color: #bee5eb;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        .file-input {
+            margin: 10px 0;
+        }
+        .upload-status {
+            margin: 10px 0;
+            padding: 10px;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Tax Optimization Upload Test</h1>
+    
+    <div class="test-section info">
+        <h2>Server Status</h2>
+        <p>✅ Server is running on <strong>http://localhost:3000</strong></p>
+        <p>✅ Tax optimization page should be accessible at <strong>http://localhost:3000/dashboard/tax-optimization</strong></p>
+    </div>
+
+    <div class="test-section">
+        <h2>Upload Functionality Test</h2>
+        <p>To test the upload functionality:</p>
+        <ol>
+            <li>Navigate to <a href="http://localhost:3000/dashboard/tax-optimization" target="_blank">http://localhost:3000/dashboard/tax-optimization</a></li>
+            <li>You should see an upload prompt or "Upload 1120 Data" button</li>
+            <li>Click the upload button to open the file upload modal</li>
+            <li>Upload any file (PDF, Excel, CSV, or XML)</li>
+            <li>The system should process the file and display the analysis dashboard</li>
+        </ol>
+    </div>
+
+    <div class="test-section">
+        <h2>Expected Behavior</h2>
+        <ul>
+            <li>✅ Upload modal opens when clicking "Upload 1120 Data"</li>
+            <li>✅ Files can be dragged and dropped or selected via file picker</li>
+            <li>✅ Upload progress is shown during processing</li>
+            <li>✅ After upload, the analysis dashboard displays with real data</li>
+            <li>✅ Data persists in localStorage between page refreshes</li>
+        </ul>
+    </div>
+
+    <div class="test-section">
+        <h2>Test File Upload</h2>
+        <div class="file-input">
+            <input type="file" id="testFile" accept=".pdf,.xlsx,.xls,.csv,.xml" multiple>
+            <button onclick="testUpload()">Test Upload Processing</button>
+        </div>
+        <div id="uploadStatus" class="upload-status" style="display: none;"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>Mock Data Preview</h2>
+        <p>The system uses mock data from the Form1120AdvisorEngine which includes:</p>
+        <ul>
+            <li>Company: Sample Corporation (EIN: 12-3456789)</li>
+            <li>Tax Year: 2024</li>
+            <li>Entity Type: C-Corp</li>
+            <li>Total Assets: $1,840,000</li>
+            <li>Net Income: $197,500</li>
+            <li>Multiple optimization opportunities with potential savings</li>
+        </ul>
+    </div>
+
+    <script>
+        function testUpload() {
+            const fileInput = document.getElementById('testFile');
+            const statusDiv = document.getElementById('uploadStatus');
+            
+            if (fileInput.files.length === 0) {
+                statusDiv.style.display = 'block';
+                statusDiv.className = 'upload-status error';
+                statusDiv.innerHTML = 'Please select a file first.';
+                return;
+            }
+
+            statusDiv.style.display = 'block';
+            statusDiv.className = 'upload-status info';
+            statusDiv.innerHTML = 'Processing file... (This is a demo - actual processing would happen in the app)';
+            
+            // Simulate processing
+            setTimeout(() => {
+                statusDiv.className = 'upload-status success';
+                statusDiv.innerHTML = '✅ File processed successfully! In the actual app, this would show the analysis dashboard.';
+            }, 2000);
+        }
+
+        // Check if server is accessible
+        fetch('http://localhost:3000')
+            .then(response => {
+                if (response.ok) {
+                    console.log('✅ Server is accessible');
+                } else {
+                    console.log('❌ Server returned error:', response.status);
+                }
+            })
+            .catch(error => {
+                console.log('❌ Server not accessible:', error);
+            });
+    </script>
+</body>
+</html>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,200 @@
+{
+  "form": "1040",
+  "year": 2024,
+  "fields": [
+    {
+      "key": "primary_name",
+      "label": "Your first name and middle initial",
+      "strategy": "right",
+      "tolerance": {
+        "y_slack": 80
+      }
+    },
+    {
+      "key": "spouse_name",
+      "label": "If joint return, spouse's first name and middle initial",
+      "strategy": "right",
+      "tolerance": {
+        "y_slack": 80
+      }
+    },
+    {
+      "key": "ssn",
+      "label": "Social security number",
+      "strategy": "right",
+      "tolerance": {
+        "y_slack": 40
+      }
+    },
+    {
+      "key": "wages",
+      "label": "Wages, salaries, tips",
+      "strategy": "right",
+      "tolerance": {
+        "y_slack": 60
+      }
+    },
+    {
+      "key": "interest",
+      "label": "Taxable interest",
+      "strategy": "right",
+      "tolerance": {
+        "y_slack": 60
+      }
+    },
+    {
+      "key": "dividends",
+      "label": "Ordinary dividends",
+      "strategy": "right",
+      "tolerance": {
+        "y_slack": 60
+      }
+    },
+    {
+      "key": "taxable_refunds",
+      "label": "State and local income tax refunds",
+      "strategy": "right",
+      "tolerance": {
+        "y_slack": 60
+      }
+    },
+    {
+      "key": "alimony",
+      "label": "Alimony received",
+      "strategy": "right",
+      "tolerance": {
+        "y_slack": 60
+      }
+    },
+    {
+      "key": "business_income",
+      "label": "Business income or (loss)",
+      "strategy": "right",
+      "tolerance": {
+        "y_slack": 60
+      }
+    },
+    {
+      "key": "capital_gains",
+      "label": "Capital gain or (loss)",
+      "strategy": "right",
+      "tolerance": {
+        "y_slack": 60
+      }
+    },
+    {
+      "key": "other_income",
+      "label": "Other income",
+      "strategy": "right",
+      "tolerance": {
+        "y_slack": 60
+      }
+    },
+    {
+      "key": "total_income",
+      "label": "Total income",
+      "strategy": "right",
+      "tolerance": {
+        "y_slack": 60
+      }
+    },
+    {
+      "key": "agi",
+      "label": "Adjusted gross income",
+      "strategy": "right",
+      "tolerance": {
+        "y_slack": 60
+      }
+    },
+    {
+      "key": "standard_deduction",
+      "label": "Standard deduction",
+      "strategy": "right",
+      "tolerance": {
+        "y_slack": 60
+      }
+    },
+    {
+      "key": "itemized_deductions",
+      "label": "Itemized deductions",
+      "strategy": "right",
+      "tolerance": {
+        "y_slack": 60
+      }
+    },
+    {
+      "key": "qualified_business_income",
+      "label": "Qualified business income deduction",
+      "strategy": "right",
+      "tolerance": {
+        "y_slack": 60
+      }
+    },
+    {
+      "key": "total_deductions",
+      "label": "Total deductions",
+      "strategy": "right",
+      "tolerance": {
+        "y_slack": 60
+      }
+    },
+    {
+      "key": "taxable_income",
+      "label": "Taxable income",
+      "strategy": "right",
+      "tolerance": {
+        "y_slack": 60
+      }
+    },
+    {
+      "key": "total_tax",
+      "label": "Total tax",
+      "strategy": "right",
+      "tolerance": {
+        "y_slack": 60
+      }
+    },
+    {
+      "key": "child_tax_credit",
+      "label": "Child tax credit",
+      "strategy": "right",
+      "tolerance": {
+        "y_slack": 60
+      }
+    },
+    {
+      "key": "other_credits",
+      "label": "Other credits",
+      "strategy": "right",
+      "tolerance": {
+        "y_slack": 60
+      }
+    },
+    {
+      "key": "total_credits",
+      "label": "Total credits",
+      "strategy": "right",
+      "tolerance": {
+        "y_slack": 60
+      }
+    },
+    {
+      "key": "total_payments",
+      "label": "Total payments",
+      "strategy": "right",
+      "tolerance": {
+        "y_slack": 60
+      }
+    },
+    {
+      "key": "refund",
+      "strategy": "nearest_numeric",
+      "label": "Refund"
+    },
+    {
+      "key": "amount_owed",
+      "strategy": "nearest_numeric",
+      "label": "Amount you owe"
+    }
+  ]
+}
