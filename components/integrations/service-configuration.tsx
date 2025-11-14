@@ -193,10 +193,45 @@ export function ServiceConfiguration() {
   const [isRegisteringWebhook, setIsRegisteringWebhook] = useState(false)
   const [webhookStatus, setWebhookStatus] = useState<'idle' | 'registering' | 'success' | 'error'>('idle')
   const [webhookMessage, setWebhookMessage] = useState<string>('')
+  const [oauthError, setOauthError] = useState<string | null>(null)
+  const [oauthSuccess, setOauthSuccess] = useState<string | null>(null)
+  const [testConnectionResult, setTestConnectionResult] = useState<{
+    serviceId: string
+    success: boolean
+    message: string
+    details?: string
+  } | null>(null)
 
   // Avoid hydration mismatch by rendering only after mount
   useEffect(() => {
     setIsHydrated(true)
+  }, [])
+
+  // Read error/success messages from URL query parameters
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    
+    const params = new URLSearchParams(window.location.search)
+    const error = params.get('error')
+    const success = params.get('success')
+    const companyId = params.get('companyId')
+    
+    if (error) {
+      setOauthError(decodeURIComponent(error))
+      // Clear the error from URL after displaying
+      const newUrl = new URL(window.location.href)
+      newUrl.searchParams.delete('error')
+      window.history.replaceState({}, '', newUrl.toString())
+    }
+    
+    if (success) {
+      setOauthSuccess(decodeURIComponent(success) + (companyId ? ` (Company ID: ${companyId})` : ''))
+      // Clear the success from URL after displaying
+      const newUrl = new URL(window.location.href)
+      newUrl.searchParams.delete('success')
+      newUrl.searchParams.delete('companyId')
+      window.history.replaceState({}, '', newUrl.toString())
+    }
   }, [])
 
   // Ensure QuickBooks shows active when a Company ID is present
@@ -751,32 +786,148 @@ export function ServiceConfiguration() {
 
   const handleTestConnection = async (configId: string) => {
     setIsLoading(true)
+    // Clear previous result for this service
+    setTestConnectionResult(prev => prev?.serviceId === configId ? null : prev)
     
     try {
       const cfg = configs.find(c => c.id === configId)
-      // Immediate client-side success for QuickBooks if Company ID present (demo/sandbox mode)
-      if (configId === 'quickbooks') {
-        const qbCompanyId = (cfg as any)?.parameters?.companyId?.value || ''
-        if (qbCompanyId) {
-          setConfigs(prev => prev.map(config => 
-            config.id === configId 
-              ? { ...config, status: 'active', enabled: true }
-              : config
-          ))
-          // Persist to localStorage immediately
-          try {
-            const saved = JSON.parse(localStorage.getItem('serviceConfigurations') || '{}')
-            saved[configId] = { ...cfg, status: 'active', enabled: true, lastUpdated: new Date().toISOString() }
-            localStorage.setItem('serviceConfigurations', JSON.stringify(saved))
-            const asArray = Object.values(saved)
-            localStorage.setItem('service-configurations', JSON.stringify(asArray))
-          } catch {}
-        }
+      if (!cfg) {
+        setTestConnectionResult({
+          serviceId: configId,
+          success: false,
+          message: 'Configuration not found',
+          details: 'Unable to locate service configuration'
+        })
+        return
       }
+
       // Flatten parameter values for API (convert { value, type, ... } → raw value)
-      const flatParams = cfg ? Object.fromEntries(
+      const flatParams = Object.fromEntries(
         Object.entries(cfg.parameters || {}).map(([k, v]: any) => [k, v?.value ?? ''])
-      ) : undefined
+      )
+
+      // For QuickBooks, perform detailed validation before API call
+      if (configId === 'quickbooks') {
+        const companyId = flatParams.companyId || ''
+        const clientId = flatParams.clientId || ''
+        const clientSecret = flatParams.clientSecret || ''
+        const accessToken = flatParams.accessToken || ''
+        const realmId = flatParams.realmId || ''
+        const environment = flatParams.environment || 'sandbox'
+
+        // Check if we have OAuth tokens (real connection)
+        if (accessToken && realmId) {
+          // Test with real API
+          const response = await fetch('/api/integrations/configuration', {
+            method: 'PUT',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              serviceId: configId,
+              parameters: flatParams
+            })
+          })
+
+          if (response.ok) {
+            const data = await response.json()
+            setTestConnectionResult({
+              serviceId: configId,
+              success: data.success,
+              message: data.message || (data.success ? 'QuickBooks OAuth connection verified' : 'QuickBooks connection test failed'),
+              details: data.details || (data.success 
+                ? `Successfully connected to QuickBooks ${environment === 'production' ? 'Production' : 'Sandbox'} environment. Company ID: ${realmId}`
+                : 'Please check your OAuth tokens. They may be expired or invalid.')
+            })
+            
+            setConfigs(prev => prev.map(config => 
+              config.id === configId 
+                ? {
+                    ...config,
+                    status: data.success ? 'active' : 'error',
+                    enabled: data.success ? true : config.enabled
+                  }
+                : config
+            ))
+          } else {
+            const errorData = await response.json().catch(() => ({}))
+            setTestConnectionResult({
+              serviceId: configId,
+              success: false,
+              message: errorData.message || 'Connection test failed',
+              details: `HTTP ${response.status}: ${response.statusText}. ${errorData.details || 'Please check your configuration and try again.'}`
+            })
+          }
+          return
+        }
+
+        // Check if we have Company ID but no OAuth (demo/sandbox mode)
+        if (companyId && !accessToken) {
+          if (!clientId || !clientSecret) {
+            setTestConnectionResult({
+              serviceId: configId,
+              success: false,
+              message: 'Incomplete QuickBooks configuration',
+              details: 'Company ID is present but Client ID and Client Secret are required for OAuth connection. Please configure all required fields and click "Connect" to complete OAuth flow.'
+            })
+            return
+          }
+
+          // Test connection with Company ID only (demo mode)
+          const response = await fetch('/api/integrations/configuration', {
+            method: 'PUT',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              serviceId: configId,
+              parameters: flatParams
+            })
+          })
+
+          if (response.ok) {
+            const data = await response.json()
+            setTestConnectionResult({
+              serviceId: configId,
+              success: data.success,
+              message: data.message || 'QuickBooks Company ID verified',
+              details: data.details || (data.success
+                ? `Company ID verified (${environment} mode). To access real data, complete OAuth connection by clicking "Connect" button.`
+                : 'Company ID validation failed. Please verify your Company ID in QuickBooks Settings → Company Settings.')
+            })
+            
+            setConfigs(prev => prev.map(config => 
+              config.id === configId 
+                ? {
+                    ...config,
+                    status: data.success ? 'active' : 'error',
+                    enabled: data.success ? true : config.enabled
+                  }
+                : config
+            ))
+          } else {
+            const errorData = await response.json().catch(() => ({}))
+            setTestConnectionResult({
+              serviceId: configId,
+              success: false,
+              message: errorData.message || 'Connection test failed',
+              details: errorData.details || 'Please check your configuration and try again.'
+            })
+          }
+          return
+        }
+
+        // No Company ID or OAuth tokens
+        setTestConnectionResult({
+          serviceId: configId,
+          success: false,
+          message: 'QuickBooks not configured',
+          details: 'Please provide either:\n1. Company ID (for demo/sandbox mode), or\n2. Complete OAuth connection with access tokens\n\nClick "Connect" to initiate OAuth flow.'
+        })
+        return
+      }
+
+      // For other services, use standard test
       const response = await fetch('/api/integrations/configuration', {
         method: 'PUT',
         headers: {
@@ -784,13 +935,18 @@ export function ServiceConfiguration() {
         },
         body: JSON.stringify({
           serviceId: configId,
-          // Provide parameters so API can test without relying on DB in demo
           parameters: flatParams
         })
       })
 
       if (response.ok) {
         const data = await response.json()
+        setTestConnectionResult({
+          serviceId: configId,
+          success: data.success,
+          message: data.message || (data.success ? 'Connection successful' : 'Connection failed'),
+          details: data.details
+        })
         
         setConfigs(prev => prev.map(config => 
           config.id === configId 
@@ -802,10 +958,22 @@ export function ServiceConfiguration() {
             : config
         ))
       } else {
-        throw new Error('Failed to test connection')
+        const errorData = await response.json().catch(() => ({}))
+        setTestConnectionResult({
+          serviceId: configId,
+          success: false,
+          message: errorData.message || 'Connection test failed',
+          details: `HTTP ${response.status}: ${response.statusText}`
+        })
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error testing connection:', error)
+      setTestConnectionResult({
+        serviceId: configId,
+        success: false,
+        message: 'Connection test error',
+        details: error.message || 'An unexpected error occurred while testing the connection. Please try again.'
+      })
       setConfigs(prev => prev.map(config => 
         config.id === configId 
           ? {
@@ -845,6 +1013,55 @@ export function ServiceConfiguration() {
         redirectUri = redirectUri.slice(0, -1)
       }
       
+      // Warn if redirect URI is localhost (but don't override - use what user configured)
+      const isLocalhost = redirectUri.includes('localhost') || redirectUri.includes('127.0.0.1') || redirectUri.includes('0.0.0.0')
+      const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+      
+      if (isLocalhost && isLocal) {
+        // Warn user but don't override their configured URL
+        const useLocalhost = confirm(
+          `⚠️ Localhost Redirect URI Detected\n\n` +
+          `You're using a localhost redirect URI: ${redirectUri}\n\n` +
+          `QuickBooks OAuth requires a publicly accessible URL.\n\n` +
+          `If you're testing locally, you need:\n` +
+          `1. A tunnel service (ngrok, localhost.run, etc.)\n` +
+          `2. The tunnel URL configured in QuickBooks Developer Portal\n` +
+          `3. The same URL in the Redirect URI field above\n\n` +
+          `Click OK to continue with your configured URL, or Cancel to update it.`
+        )
+        
+        if (!useLocalhost) {
+          return // User wants to update the redirect URI
+        }
+        
+        // Optional: Check if ngrok is running and suggest it (but don't force)
+        try {
+          const ngrokResponse = await fetch('http://localhost:4040/api/tunnels')
+          if (ngrokResponse.ok) {
+            const ngrokData = await ngrokResponse.json()
+            const httpsTunnel = ngrokData.tunnels?.find((t: any) => t.proto === 'https')
+            
+            if (httpsTunnel) {
+              const ngrokUrl = `${httpsTunnel.public_url}/api/integrations/quickbooks/oauth`
+              const useNgrok = confirm(
+                `Ngrok tunnel detected: ${ngrokUrl}\n\n` +
+                `Would you like to use this ngrok URL instead?\n\n` +
+                `Note: This URL must match what's configured in QuickBooks Developer Portal.`
+              )
+              
+              if (useNgrok) {
+                redirectUri = ngrokUrl
+                // Update the form field as well
+                handleParameterChange(config.id, 'redirectUri', ngrokUrl)
+              }
+            }
+          }
+        } catch (ngrokError) {
+          // Ngrok not running - that's fine, use the configured URL
+          console.log('Ngrok not available, using configured redirect URI:', redirectUri)
+        }
+      }
+      
       // Validate redirect URI format
       try {
         const url = new URL(redirectUri)
@@ -873,15 +1090,22 @@ export function ServiceConfiguration() {
       console.log('QuickBooks OAuth - Redirect URI:', redirectUri)
       console.log('QuickBooks OAuth - Make sure this EXACT URI is in QuickBooks Developer Portal:', redirectUri)
       
+      // Construct OAuth URL according to QuickBooks OAuth 2.0 specification
+      // Format: GET https://appcenter.intuit.com/connect/oauth2?
+      //   client_id=YOUR_CLIENT_ID&
+      //   response_type=code&
+      //   redirect_uri=URL_ENCODED_REDIRECT_URI&
+      //   scope=com.intuit.quickbooks.accounting openid email&
+      //   state=CSRF_TOKEN_OR_USER_ID
       const authUrl = `${baseUrl}/connect/oauth2?` +
         `client_id=${config.parameters.clientId.value}&` +
-        `scope=com.intuit.quickbooks.accounting&` +
-        `redirect_uri=${encodeURIComponent(redirectUri)}&` +
         `response_type=code&` +
+        `redirect_uri=${encodeURIComponent(redirectUri)}&` +
+        `scope=${encodeURIComponent('com.intuit.quickbooks.accounting openid email')}&` +
         `access_type=offline&` +
         `state=${companyId ? `company_${companyId}` : `connect_${Date.now()}`}`
-
-      console.log('QuickBooks OAuth URL:', authUrl)
+      
+      console.log('QuickBooks OAuth URL constructed:', authUrl)
       window.location.href = authUrl
     } catch (error: any) {
       console.error('QuickBooks OAuth initiation error:', error)
@@ -922,6 +1146,35 @@ export function ServiceConfiguration() {
           redirectUri = redirectUri.slice(0, -1)
         }
         
+        // Check if redirect URI is localhost (requires tunnel for local testing)
+        const isLocalhost = redirectUri.includes('localhost') || redirectUri.includes('127.0.0.1') || redirectUri.includes('0.0.0.0')
+        const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+        
+        if (isLocalhost && isLocal) {
+          // Check if ngrok is available
+          try {
+            const ngrokResponse = await fetch('http://localhost:4040/api/tunnels')
+            if (!ngrokResponse.ok) {
+              throw new Error('Ngrok not running')
+            }
+            const ngrokData = await ngrokResponse.json()
+            const httpsTunnel = ngrokData.tunnels?.find((t: any) => t.proto === 'https')
+            
+            if (httpsTunnel) {
+              // Don't auto-override - use configured URL instead
+              const ngrokUrl = `${httpsTunnel.public_url}/api/integrations/quickbooks/oauth`
+              // redirectUri = ngrokUrl  // REMOVED: Don't override user's configured URL
+              setImportMessage(`⚠️ Ngrok detected: ${ngrokUrl}\n\nUsing your configured redirect URI: ${redirectUri}\n\nMake sure this matches QuickBooks Developer Portal.`)
+            } else {
+              // No HTTPS tunnel - that's fine, use configured URL
+              setImportMessage(`Using configured redirect URI: ${redirectUri}\n\nMake sure this matches your QuickBooks Developer Portal configuration.`)
+            }
+          } catch (ngrokError) {
+            // Ngrok not running - that's fine, use the configured URL
+            setImportMessage(`Using configured redirect URI: ${redirectUri}\n\nMake sure this matches your QuickBooks Developer Portal configuration.`)
+          }
+        }
+        
         // Store current config for OAuth callback
         localStorage.setItem('quickbooks-import-config', JSON.stringify({
           companyId: config.parameters?.companyId?.value || '',
@@ -933,13 +1186,16 @@ export function ServiceConfiguration() {
         // Redirect to QuickBooks OAuth - uses appcenter.intuit.com for OAuth 2.0
         const baseUrl = 'https://appcenter.intuit.com'
         
+        // Construct OAuth URL according to QuickBooks OAuth 2.0 specification
         const authUrl = `${baseUrl}/connect/oauth2?` +
           `client_id=${config.parameters?.clientId?.value}&` +
-          `scope=com.intuit.quickbooks.accounting&` +
-          `redirect_uri=${encodeURIComponent(redirectUri)}&` +
           `response_type=code&` +
+          `redirect_uri=${encodeURIComponent(redirectUri)}&` +
+          `scope=${encodeURIComponent('com.intuit.quickbooks.accounting openid email')}&` +
           `access_type=offline&` +
           `state=import_${Date.now()}`
+        
+        console.log('QuickBooks OAuth URL (Import flow):', authUrl)
 
         window.location.href = authUrl
         return
@@ -1374,7 +1630,11 @@ export function ServiceConfiguration() {
       </div>
 
       {/* Configuration Tabs */}
-      <Tabs value={activeConfig || "overview"} onValueChange={setActiveConfig} className="space-y-6">
+      <Tabs value={activeConfig || "overview"} onValueChange={(value) => {
+        setActiveConfig(value)
+        // Clear test result when switching configurations
+        setTestConnectionResult(null)
+      }} className="space-y-6">
         <TabsList className="grid w-full grid-cols-2 lg:grid-cols-5">
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="ai-services">AI Services</TabsTrigger>
@@ -1891,6 +2151,122 @@ export function ServiceConfiguration() {
                   <div className="flex items-center gap-2 text-red-600 text-sm">
                     <AlertCircle className="h-4 w-4" />
                     Failed to save configuration
+                  </div>
+                )}
+
+                {testConnectionResult && testConnectionResult.serviceId === config.id && (
+                  <div className={`border rounded-lg p-4 ${
+                    testConnectionResult.success 
+                      ? 'bg-green-50 border-green-200' 
+                      : 'bg-red-50 border-red-200'
+                  }`}>
+                    <div className="flex items-start gap-2">
+                      {testConnectionResult.success ? (
+                        <CheckCircle className="h-5 w-5 text-green-600 flex-shrink-0 mt-0.5" />
+                      ) : (
+                        <AlertCircle className="h-5 w-5 text-red-600 flex-shrink-0 mt-0.5" />
+                      )}
+                      <div className="flex-1">
+                        <h4 className={`font-medium mb-1 ${
+                          testConnectionResult.success ? 'text-green-900' : 'text-red-900'
+                        }`}>
+                          {testConnectionResult.success ? 'Connection Test Successful' : 'Connection Test Failed'}
+                        </h4>
+                        <p className={`text-sm mb-2 ${
+                          testConnectionResult.success ? 'text-green-800' : 'text-red-800'
+                        }`}>
+                          {testConnectionResult.message}
+                        </p>
+                        {testConnectionResult.details && (
+                          <div className={`text-xs mt-2 p-2 rounded ${
+                            testConnectionResult.success 
+                              ? 'bg-green-100 text-green-900' 
+                              : 'bg-red-100 text-red-900'
+                          }`}>
+                            <p className="font-medium mb-1">Details:</p>
+                            <p className="whitespace-pre-line">{testConnectionResult.details}</p>
+                          </div>
+                        )}
+                        {!testConnectionResult.success && config.id === 'quickbooks' && (
+                          <div className="mt-3">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleConnectQuickBooks(config.id)}
+                              className="mr-2"
+                            >
+                              Connect QuickBooks
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => setTestConnectionResult(null)}
+                            >
+                              Dismiss
+                            </Button>
+                          </div>
+                        )}
+                        {testConnectionResult.success && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setTestConnectionResult(null)}
+                            className="mt-3"
+                          >
+                            Dismiss
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {config.id === 'quickbooks' && oauthError && (
+                  <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                    <div className="flex items-start gap-2">
+                      <AlertCircle className="h-5 w-5 text-red-600 flex-shrink-0 mt-0.5" />
+                      <div className="flex-1">
+                        <h4 className="font-medium text-red-900 mb-1">OAuth Connection Failed</h4>
+                        <p className="text-sm text-red-800">{oauthError}</p>
+                        <div className="mt-3 text-xs text-red-700 space-y-1">
+                          <p><strong>Common issues:</strong></p>
+                          <ul className="list-disc list-inside space-y-1 ml-2">
+                            <li>Redirect URI must match exactly with QuickBooks Developer Portal</li>
+                            <li>Client ID and Client Secret must be correct</li>
+                            <li>Authorization code may have expired (try connecting again)</li>
+                            <li>Check that your QuickBooks app is in the correct environment (sandbox/production)</li>
+                          </ul>
+                        </div>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setOauthError(null)}
+                          className="mt-3"
+                        >
+                          Dismiss
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {config.id === 'quickbooks' && oauthSuccess && (
+                  <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                    <div className="flex items-start gap-2">
+                      <CheckCircle className="h-5 w-5 text-green-600 flex-shrink-0 mt-0.5" />
+                      <div className="flex-1">
+                        <h4 className="font-medium text-green-900 mb-1">OAuth Connection Successful</h4>
+                        <p className="text-sm text-green-800">{oauthSuccess}</p>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setOauthSuccess(null)}
+                          className="mt-3"
+                        >
+                          Dismiss
+                        </Button>
+                      </div>
+                    </div>
                   </div>
                 )}
 

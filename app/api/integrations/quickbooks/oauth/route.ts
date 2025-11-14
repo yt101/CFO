@@ -6,16 +6,23 @@ export const dynamic = 'force-dynamic'
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
+    // OAuth callback parameters from QuickBooks redirect
+    // Format: GET /api/integrations/quickbooks/oauth?
+    //   code=AUTH_CODE_HERE&
+    //   realmId=123145860461579& (optional - may be in callback or token response)
+    //   state=CSRF_TOKEN_OR_USER_ID
     const code = searchParams.get('code')
     const state = searchParams.get('state')
     const error = searchParams.get('error')
+    const realmId = searchParams.get('realmId') // Some OAuth flows may include realmId in callback
 
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || request.nextUrl.origin
 
     // Log all query parameters for debugging
-    console.log('QuickBooks OAuth Callback:', {
+    console.log('QuickBooks OAuth Callback received:', {
       code: code ? 'present' : 'missing',
       state,
+      realmId: realmId || 'not in callback (will get from token exchange)',
       error,
       allParams: Object.fromEntries(searchParams.entries())
     })
@@ -32,7 +39,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Get QuickBooks configuration
-    const supabase = createClient()
+    const supabase = await createClient()
     
     // Get current user
     const { data: { user }, error: userError } = await supabase.auth.getUser()
@@ -96,10 +103,8 @@ export async function GET(request: NextRequest) {
     }
 
     // Exchange code for tokens - QuickBooks OAuth 2.0 token endpoint
-    // QuickBooks OAuth 2.0 uses oauth.platform.intuit.com for token exchange
-    const tokenUrl = environment === 'production'
-      ? 'https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer'
-      : 'https://sandbox-quickbooks.api.intuit.com/oauth2/v1/tokens/bearer'
+    // QuickBooks OAuth 2.0 uses oauth.platform.intuit.com for token exchange (both sandbox and production)
+    const tokenUrl = 'https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer'
 
     console.log('Exchanging authorization code for tokens:', {
       tokenUrl,
@@ -131,14 +136,40 @@ export async function GET(request: NextRequest) {
 
     if (!tokenResponse.ok) {
       let errorMessage = 'Token exchange failed'
+      let errorDetails: any = {}
+      
       try {
         const errorData = JSON.parse(responseText)
         errorMessage = errorData.error_description || errorData.error || errorMessage
-        console.error('QuickBooks token exchange error details:', errorData)
+        errorDetails = errorData
+        console.error('QuickBooks token exchange error details:', {
+          status: tokenResponse.status,
+          statusText: tokenResponse.statusText,
+          error: errorData.error,
+          error_description: errorData.error_description,
+          error_uri: errorData.error_uri,
+          fullResponse: errorData
+        })
+        
+        // Provide more specific error messages
+        if (errorData.error === 'invalid_grant') {
+          errorMessage = 'Authorization code expired or invalid. Please try connecting again.'
+        } else if (errorData.error === 'invalid_client') {
+          errorMessage = 'Invalid Client ID or Client Secret. Please verify your credentials in QuickBooks Developer Portal.'
+        } else if (errorData.error === 'redirect_uri_mismatch') {
+          errorMessage = `Redirect URI mismatch. Your redirect URI "${redirectUri}" must match exactly with what's registered in QuickBooks Developer Portal.`
+        } else if (errorData.error_description) {
+          errorMessage = errorData.error_description
+        }
       } catch {
-        console.error('QuickBooks token exchange error (non-JSON):', responseText)
+        console.error('QuickBooks token exchange error (non-JSON):', {
+          status: tokenResponse.status,
+          statusText: tokenResponse.statusText,
+          responsePreview: responseText.substring(0, 500)
+        })
         errorMessage = responseText.substring(0, 200) || errorMessage
       }
+      
       return NextResponse.redirect(`${baseUrl}/dashboard/integrations?error=${encodeURIComponent(errorMessage)}`)
     }
 
@@ -157,14 +188,28 @@ export async function GET(request: NextRequest) {
       return NextResponse.redirect(`${baseUrl}/dashboard/integrations?error=Invalid token response from QuickBooks`)
     }
 
-    if (!tokenData.access_token || !tokenData.realmId) {
+    // IMPORTANT: realmId IS the companyId in QuickBooks OAuth
+    // QuickBooks returns realmId in the token response, which is the Company ID
+    // Use realmId from callback URL if provided, otherwise from token response
+    const companyIdFromOAuth = realmId || tokenData.realmId
+    
+    if (!tokenData.access_token || !companyIdFromOAuth) {
       console.error('Token response missing required fields:', {
         hasAccessToken: !!tokenData.access_token,
-        hasRealmId: !!tokenData.realmId,
+        hasRealmId: !!companyIdFromOAuth,
+        realmIdFromCallback: realmId,
+        realmIdFromToken: tokenData.realmId,
         response: tokenData
       })
-      return NextResponse.redirect(`${baseUrl}/dashboard/integrations?error=Token response missing required fields`)
+      return NextResponse.redirect(`${baseUrl}/dashboard/integrations?error=Token response missing required fields (access_token or realmId/companyId)`)
     }
+    
+    console.log('OAuth callback successful - realmId (Company ID) received:', {
+      fromCallback: realmId,
+      fromToken: tokenData.realmId,
+      finalCompanyId: companyIdFromOAuth,
+      note: 'realmId IS the QuickBooks Company ID'
+    })
 
     // Update QuickBooks configuration with tokens
     // Preserve existing parameter structure
@@ -183,22 +228,26 @@ export async function GET(request: NextRequest) {
       updatedParameters.refreshToken = tokenData.refresh_token
     }
     
+    // IMPORTANT: realmId from QuickBooks OAuth IS the Company ID
+    // Update both realmId and companyId with the same value (already declared above)
+    
+    // Update realmId parameter
     if (updatedParameters.realmId && typeof updatedParameters.realmId === 'object') {
-      updatedParameters.realmId.value = tokenData.realmId
+      updatedParameters.realmId.value = companyIdFromOAuth
     } else {
-      updatedParameters.realmId = tokenData.realmId
+      updatedParameters.realmId = companyIdFromOAuth
     }
     
     updatedParameters.tokenExpiresAt = Date.now() + (tokenData.expires_in * 1000)
     
-    // Also update companyId if we got realmId from OAuth (realmId IS the company ID)
-    if (tokenData.realmId) {
-      if (updatedParameters.companyId && typeof updatedParameters.companyId === 'object') {
-        updatedParameters.companyId.value = tokenData.realmId
-      } else {
-        updatedParameters.companyId = tokenData.realmId
-      }
+    // Update companyId - realmId IS the companyId in QuickBooks
+    if (updatedParameters.companyId && typeof updatedParameters.companyId === 'object') {
+      updatedParameters.companyId.value = companyIdFromOAuth
+    } else {
+      updatedParameters.companyId = companyIdFromOAuth
     }
+    
+    console.log('Updated configuration with Company ID (realmId):', companyIdFromOAuth)
 
     const { error: configError } = await supabase
       .from('service_configurations')
@@ -217,11 +266,33 @@ export async function GET(request: NextRequest) {
       return NextResponse.redirect(`${baseUrl}/dashboard/integrations?error=Failed to save configuration`)
     }
 
-    return NextResponse.redirect(`${baseUrl}/dashboard/integrations?success=QuickBooks connected successfully&companyId=${tokenData.realmId || stateCompanyId || 'N/A'}`)
+    return NextResponse.redirect(`${baseUrl}/dashboard/integrations?success=QuickBooks connected successfully&companyId=${companyIdFromOAuth || stateCompanyId || 'N/A'}`)
 
-  } catch (error) {
+  } catch (error: any) {
     console.error('QuickBooks OAuth error:', error)
+    console.error('Error stack:', error?.stack)
+    console.error('Error details:', {
+      message: error?.message,
+      name: error?.name,
+      code: error?.code
+    })
+    
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || request.nextUrl.origin
-    return NextResponse.redirect(`${baseUrl}/dashboard/integrations?error=OAuth process failed`)
+    
+    // Provide more specific error messages
+    let errorMessage = 'OAuth process failed'
+    if (error?.message) {
+      errorMessage = error.message
+    } else if (error?.code === 'ENOTFOUND' || error?.code === 'ECONNREFUSED') {
+      errorMessage = 'Failed to connect to QuickBooks. Please check your internet connection.'
+    } else if (error?.message?.includes('redirect_uri')) {
+      errorMessage = 'Redirect URI mismatch. Please ensure the redirect URI in your configuration matches exactly with QuickBooks Developer Portal.'
+    } else if (error?.message?.includes('invalid_client')) {
+      errorMessage = 'Invalid Client ID or Client Secret. Please check your QuickBooks credentials.'
+    } else if (error?.message?.includes('invalid_grant')) {
+      errorMessage = 'Authorization code expired or invalid. Please try connecting again.'
+    }
+    
+    return NextResponse.redirect(`${baseUrl}/dashboard/integrations?error=${encodeURIComponent(errorMessage)}`)
   }
 }
