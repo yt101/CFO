@@ -5,9 +5,9 @@ import { Toaster } from 'sonner'
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: 'ReturnSight AI',
-  description: 'AI-Powered Financial Insights and Tax Return Analysis',
-  generator: 'ReturnSight AI',
+  title: 'Lifeline AI',
+  description: 'An emotionally intelligent stabilizer for high-functioning humans.',
+  generator: 'Lifeline AI',
 }
 
 export default function RootLayout({
@@ -17,7 +17,9 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body className={`font-sans ${GeistSans.variable} ${GeistMono.variable}`}>
+      <body
+        className={`min-h-screen bg-[#F7F4EF] text-slate-900 antialiased ${GeistSans.variable} ${GeistMono.variable}`}
+      >
         {children}
         <Toaster />
       </body>
